@@ -1,0 +1,8 @@
+[project]
+include_dirs = ["."]
+build_dir = "_build"
+target_lang = "ocaml"
+
+[[module]]
+# Обчислювальний модуль КЗпП
+name = "Kzpp"
