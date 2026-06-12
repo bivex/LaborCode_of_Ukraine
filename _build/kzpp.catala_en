@@ -212,6 +212,132 @@ scope SerednyZaCharVymushenohoProhulu:
     serednomisyachnyy_zarobitok * (decimal of misyaciv_do_vyplaty)
 ```
 
+## Стаття 50–51. Норма та скорочена тривалість робочого часу
+
+Нормальна тривалість робочого часу — не більше 40 годин на тиждень.
+Скорочена тривалість: 16–18 років — 36 год; 15–16 років — 24 год;
+шкідливі умови — не більше 36 год.
+
+```catala
+declaration scope NormaRobochohoChasu:
+  input vik content integer
+  input shkidlyvi_umovy content boolean
+  # Учень, що працює у вільний від навчання час протягом навч. року
+  input uchen_v_navchalnyy_rik content boolean
+  output maks_godyn_na_tyzhden content integer
+
+scope NormaRobochohoChasu:
+  definition maks_godyn_na_tyzhden equals
+    if uchen_v_navchalnyy_rik then
+      # Учні протягом навч. року — не більше половини норми для віку.
+      (if vik >= 16 and vik < 18 then 18
+       else if vik >= 15 and vik < 16 then 12
+       else if shkidlyvi_umovy then 18
+       else 20)
+    else
+      (if vik >= 16 and vik < 18 then 36
+       else if vik >= 15 and vik < 16 then 24
+       else if shkidlyvi_umovy then 36
+       else 40)
+```
+
+## Стаття 65. Граничні норми надурочних робіт
+
+Надурочні роботи не повинні перевищувати 4 годин протягом двох днів
+підряд і 120 годин на рік.
+
+```catala
+declaration scope NadurochniRoboty:
+  input godyn_za_dva_dni content integer
+  input godyn_za_rik content integer
+  output v_mezhakh_dvoh_dniv content boolean
+  output v_mezhakh_roku content boolean
+  output dopustymo content boolean
+
+scope NadurochniRoboty:
+  definition v_mezhakh_dvoh_dniv equals godyn_za_dva_dni <= 4
+  definition v_mezhakh_roku equals godyn_za_rik <= 120
+  definition dopustymo equals v_mezhakh_dvoh_dniv and v_mezhakh_roku
+```
+
+## Стаття 70, 75. Відпочинок та щорічна відпустка
+
+Щотижневий безперервний відпочинок — не менш як 42 години. Щорічна
+основна відпустка — не менш як 24 календарних дні; для осіб до 18 років —
+31 календарний день.
+
+```catala
+declaration scope ShchorichnaVidpustka:
+  input vik content integer
+  output dniv_vidpustky content integer
+
+scope ShchorichnaVidpustka:
+  definition dniv_vidpustky equals
+    if vik < 18 then 31 else 24
+```
+
+## Стаття 106, 107, 108. Оплата надурочної, святкової та нічної роботи
+
+Надурочна (погодинна) — подвійна годинна ставка. Святкові/неробочі дні —
+подвійний розмір. Нічний час — не нижче 20% тарифної ставки за кожну
+годину додатково.
+
+```catala
+declaration scope OplataPidvyshchena:
+  input godynna_stavka content money
+  input nadurochnyh_godyn content integer
+  input svyatkovyh_godyn content integer
+  input nichnyh_godyn content integer
+  # Відсоток доплати за нічну роботу (>= 20)
+  input vidsotok_nichnyh content decimal
+  output doplata_nadurochni content money
+  output doplata_svyatkovi content money
+  output doplata_nichni content money
+
+scope OplataPidvyshchena:
+  # Надурочні: подвійна ставка → доплата = +100% за кожну годину.
+  definition doplata_nadurochni equals
+    godynna_stavka * (decimal of nadurochnyh_godyn)
+
+  # Святкові: подвійний розмір → доплата = +100% за кожну годину.
+  definition doplata_svyatkovi equals
+    godynna_stavka * (decimal of svyatkovyh_godyn)
+
+  # Нічні: не нижче 20% ставки за кожну нічну годину.
+  definition doplata_nichni equals
+    let vidsotok equals
+      (if vidsotok_nichnyh < 20.0 then 20.0 else vidsotok_nichnyh)
+    in
+    godynna_stavka * (vidsotok / 100.0) * (decimal of nichnyh_godyn)
+```
+
+## Стаття 188. Вік прийняття на роботу
+
+Не допускається прийняття на роботу осіб молодше 16 років. Як виняток, за
+згодою одного з батьків — з 15 років; для легкої роботи у вільний час —
+учні з 14 років.
+
+```catala
+declaration enumeration TypPryynyattya:
+  -- Zvychayne                # загальний випадок
+  -- ZaZhodoyuBatkiv          # за згодою одного з батьків
+  -- UchenLehkaRobota         # учень, легка робота у вільний час
+
+declaration scope VikPryynyattya:
+  input vik content integer
+  input typ content TypPryynyattya
+  output dopuskaetsya content boolean
+  output minimalnyy_vik content integer
+
+scope VikPryynyattya:
+  definition minimalnyy_vik equals
+    match typ with pattern
+    -- Zvychayne: 16
+    -- ZaZhodoyuBatkiv: 15
+    -- UchenLehkaRobota: 14
+  definition dopuskaetsya equals vik >= minimalnyy_vik
+```
+
 ## Приклади-тести
 
 Перевірочні сценарії для регресійного тестування формул.
@@ -271,4 +397,56 @@ scope Test233Zarplata:
     }
   assertion rezultat.ye_strok = false
   assertion rezultat.strok_dotrymano = true
+
+declaration scope Test51Pidlitok:
+  output rezultat content NormaRobochohoChasu
+
+scope Test51Pidlitok:
+  definition rezultat equals
+    output of NormaRobochohoChasu with {
+      -- vik: 17
+      -- shkidlyvi_umovy: false
+      -- uchen_v_navchalnyy_rik: false
+    }
+  assertion rezultat.maks_godyn_na_tyzhden = 36
+
+declaration scope Test65Nadurochni:
+  output rezultat content NadurochniRoboty
+
+scope Test65Nadurochni:
+  definition rezultat equals
+    output of NadurochniRoboty with {
+      -- godyn_za_dva_dni: 3
+      -- godyn_za_rik: 130   # перевищує 120 → недопустимо
+    }
+  assertion rezultat.dopustymo = false
+  assertion rezultat.v_mezhakh_roku = false
+
+declaration scope Test108Nichni:
+  output rezultat content OplataPidvyshchena
+
+scope Test108Nichni:
+  definition rezultat equals
+    output of OplataPidvyshchena with {
+      -- godynna_stavka: $100.00
+      -- nadurochnyh_godyn: 2
+      -- svyatkovyh_godyn: 0
+      -- nichnyh_godyn: 8
+      -- vidsotok_nichnyh: 15.0   # нижче 20 → підіймається до 20
+    }
+  # надурочні: 100*2 = 200; нічні: 100*0.20*8 = 160
+  assertion rezultat.doplata_nadurochni = $200.00
+  assertion rezultat.doplata_nichni = $160.00
+
+declaration scope Test188Vik:
+  output rezultat content VikPryynyattya
+
+scope Test188Vik:
+  definition rezultat equals
+    output of VikPryynyattya with {
+      -- vik: 15
+      -- typ: Zvychayne   # загальний мінімум 16 → не допускається
+    }
+  assertion rezultat.dopuskaetsya = false
+  assertion rezultat.minimalnyy_vik = 16
 ```

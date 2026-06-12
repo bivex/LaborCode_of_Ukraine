@@ -228,14 +228,17 @@ declaration scope NormaRobochohoChasu:
 
 scope NormaRobochohoChasu:
   definition maks_godyn_na_tyzhden equals
-    let bazova equals
+    if uchen_v_navchalnyy_rik then
+      # Учні протягом навч. року — не більше половини норми для віку.
+      (if vik >= 16 and vik < 18 then 18
+       else if vik >= 15 and vik < 16 then 12
+       else if shkidlyvi_umovy then 18
+       else 20)
+    else
       (if vik >= 16 and vik < 18 then 36
        else if vik >= 15 and vik < 16 then 24
        else if shkidlyvi_umovy then 36
        else 40)
-    in
-    # Учні протягом навчального року — не більше половини норми для віку.
-    if uchen_v_navchalnyy_rik then bazova / 2 else bazova
 ```
 
 ## Стаття 65. Граничні норми надурочних робіт
