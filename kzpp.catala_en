@@ -1,0 +1,274 @@
+# Кодекс законів про працю України — обчислювані норми
+
+Цей модуль кодує **обчислювані** норми КЗпП України для повторного
+використання у процесуальних документах (позовні заяви, розрахунки,
+заперечення). Літературний текст українською, ідентифікатори коду — ASCII.
+
+Покрито: ст. 44 (вихідна допомога), ст. 116 (строки розрахунку при
+звільненні), ст. 117 (відповідальність за затримку розрахунку),
+ст. 233–234 (строки звернення до суду), ст. 235 (середній заробіток за
+час вимушеного прогулу), ст. 241-1 (обчислення строків).
+
+```catala-metadata
+# Спільні типи
+
+declaration enumeration PidstavaZvilnennya:
+  # Підстави припинення трудового договору (для ст. 44)
+  -- ZminyVOrganizacii        # п.1 ст.40 — зміни в організації виробництва
+  -- Nevidpovidnist           # п.2 ст.40 — невідповідність посаді
+  -- PonovlennyaPracivnyka    # п.6 ст.40 — поновлення раніше звільненого
+  -- PryzovNaSluzhbu          # п.3 ст.36 — призов/вступ на військову службу
+  -- PorushennyaRobotodavcem  # ст.38, 39 — порушення роботодавцем / мобінг
+  -- ZakinchennyaStroku       # п.6 ст.36 — закінчення строку договору
+  -- VymohaProfspilky         # п.5 ч.1 ст.41 — на вимогу профспілки
+  -- PorushennyaKerivnykom    # п.6 ч.1 ст.41
+  -- Inshe                    # підстава, що не дає права на вихідну допомогу
+
+declaration enumeration TypSporu:
+  # Тип трудового спору (для ст. 233)
+  -- ProZvilnennya            # справи про звільнення
+  -- ProVyplatyPryZvilnenni   # виплати всіх сум при звільненні
+  -- ProStyahnennyaZarplaty   # стягнення з/п та інших виплат працівникові
+  -- ZahalnyySpir             # загальний трудовий спір
+  -- VymohaRobotodavcya       # стягнення роботодавцем матеріальної шкоди
+  -- DomashniyPracivnykZvil   # домашній працівник, справа про звільнення
+```
+
+## Стаття 116. Строки розрахунку при звільненні
+
+При звільненні працівника виплата всіх належних сум провадиться в день
+звільнення. Якщо працівник у день звільнення не працював — не пізніше
+наступного дня після пред'явлення ним вимоги про розрахунок.
+
+```catala
+declaration scope StrokRozrahunku:
+  # Вхід
+  input data_zvilnennya content date
+  input pracyuvav_v_den_zvilnennya content boolean
+  input data_vymohy_pro_rozrahunok content date
+  # Вихід: граничний день виплати
+  output granychnyy_den_vyplaty content date
+
+scope StrokRozrahunku:
+  definition granychnyy_den_vyplaty equals
+    if pracyuvav_v_den_zvilnennya then
+      data_zvilnennya
+    else
+      data_vymohy_pro_rozrahunok + 1 day
+```
+
+## Стаття 117. Відповідальність за затримку розрахунку
+
+У разі невиплати з вини роботодавця належних сум у строки ст. 116 (за
+відсутності спору про розмір) роботодавець виплачує середній заробіток за
+весь час затримки по день фактичного розрахунку, **але не більш як за
+шість місяців**.
+
+```catala
+declaration scope VidpovidalnistZaZatrymku:
+  # Вхід
+  input ye_spir_pro_rozmir content boolean
+  input vyna_robotodavcya content boolean
+  # Спір вирішено на користь працівника (повністю/частково/ні)
+  input spir_na_koryst_pracivnyka content boolean
+  input serednomisyachnyy_zarobitok content money
+  # Кількість повних місяців затримки до фактичного розрахунку
+  input misyaciv_zatrymky content integer
+  # Вихід
+  output mae_pravo_na_vidshkoduvannya content boolean
+  output misyaciv_do_vyplaty content integer
+  output suma_vidshkoduvannya content money
+
+scope VidpovidalnistZaZatrymku:
+  # Право виникає за вини роботодавця; за наявності спору — лише якщо
+  # спір вирішено на користь працівника (повністю або частково).
+  definition mae_pravo_na_vidshkoduvannya equals
+    vyna_robotodavcya and
+    (if ye_spir_pro_rozmir then spir_na_koryst_pracivnyka else true)
+
+  # Стеля — не більш як шість місяців.
+  definition misyaciv_do_vyplaty equals
+    if misyaciv_zatrymky > 6 then 6 else misyaciv_zatrymky
+
+  definition suma_vidshkoduvannya equals
+    if mae_pravo_na_vidshkoduvannya then
+      serednomisyachnyy_zarobitok * (decimal of misyaciv_do_vyplaty)
+    else
+      $0.00
+```
+
+## Стаття 44. Вихідна допомога
+
+Розмір вихідної допомоги залежить від підстави припинення договору.
+Виражаємо у кратності середньомісячного заробітку, окрім призову на
+службу (дві мінімальні заробітні плати).
+
+```catala
+declaration scope VyhidnaDopomoga:
+  input pidstava content PidstavaZvilnennya
+  input serednomisyachnyy_zarobitok content money
+  input minimalna_zarplata content money
+  # Розмір, передбачений колективним договором (для ст. 38, 39)
+  input rozmir_za_koldogovorom content money
+  output suma_dopomohy content money
+
+scope VyhidnaDopomoga:
+  definition suma_dopomohy equals
+    match pidstava with pattern
+    # Не менше середнього місячного заробітку:
+    -- ZminyVOrganizacii: serednomisyachnyy_zarobitok
+    -- Nevidpovidnist: serednomisyachnyy_zarobitok
+    -- PonovlennyaPracivnyka: serednomisyachnyy_zarobitok
+    -- ZakinchennyaStroku: serednomisyachnyy_zarobitok
+    -- PorushennyaKerivnykom: serednomisyachnyy_zarobitok
+    # Призов/вступ на службу — дві мінімальні зарплати:
+    -- PryzovNaSluzhbu: minimalna_zarplata * 2.0
+    # Порушення роботодавцем / мобінг — не менше 3 середніх заробітків,
+    # але не менше передбаченого колективним договором:
+    -- PorushennyaRobotodavcem:
+       (if rozmir_za_koldogovorom > serednomisyachnyy_zarobitok * 3.0
+        then rozmir_za_koldogovorom
+        else serednomisyachnyy_zarobitok * 3.0)
+    # На вимогу профспілки (п.5 ч.1 ст.41) — не менше 6 середніх заробітків:
+    -- VymohaProfspilky: serednomisyachnyy_zarobitok * 6.0
+    -- Inshe: $0.00
+```
+
+## Стаття 233–234. Строки звернення до суду
+
+Строк звернення працівника: 1 місяць (звільнення) або 3 місяці (інші).
+Стягнення зарплати — без строку (ч.1 ст.233 визнана неконституційною в цій
+частині Рішенням КСУ від 11.12.2025 N 1-р/2025). Роботодавець — 1 рік.
+Суд може поновити пропущений строк, якщо минуло не більше одного року
+(ст. 234).
+
+```catala
+declaration scope StrokZvernennya:
+  input typ_sporu content TypSporu
+  # Дата початку перебігу строку (вручення наказу / повідомлення / коли
+  # дізнався про порушення / виявлення шкоди)
+  input data_pochatku content date
+  input data_zvernennya content date
+  output ye_strok content boolean
+  output strok_misyaciv content integer
+  output granychna_data content date
+  output strok_dotrymano content boolean
+  # Чи можливе поновлення строку судом (минуло не більше 1 року)
+  output mozhlyve_ponovlennya content boolean
+
+scope StrokZvernennya:
+  definition ye_strok equals
+    match typ_sporu with pattern
+    -- ProStyahnennyaZarplaty: false  # без обмеження строком (КСУ 2025)
+    -- ProZvilnennya: true
+    -- ProVyplatyPryZvilnenni: true
+    -- ZahalnyySpir: true
+    -- VymohaRobotodavcya: true
+    -- DomashniyPracivnykZvil: true
+
+  definition strok_misyaciv equals
+    match typ_sporu with pattern
+    -- ProZvilnennya: 1
+    -- DomashniyPracivnykZvil: 1
+    -- ProVyplatyPryZvilnenni: 3
+    -- ZahalnyySpir: 3
+    -- VymohaRobotodavcya: 12        # один рік
+    -- ProStyahnennyaZarplaty: 0     # строку немає
+
+  definition granychna_data equals
+    data_pochatku + (1 month) * strok_misyaciv
+
+  definition strok_dotrymano equals
+    if ye_strok then data_zvernennya <= granychna_data else true
+
+  # Поновлення можливе, якщо з дня початку минуло не більше одного року.
+  definition mozhlyve_ponovlennya equals
+    ye_strok and (data_zvernennya <= data_pochatku + 1 year)
+```
+
+## Стаття 235. Середній заробіток за час вимушеного прогулу
+
+При поновленні на роботі — виплата середнього заробітку за час вимушеного
+прогулу, але **не більш як за один рік**. Якщо заяву розглядали понад рік
+не з вини працівника — за весь час прогулу.
+
+```catala
+declaration scope SerednyZaCharVymushenohoProhulu:
+  input serednomisyachnyy_zarobitok content money
+  input misyaciv_prohulu content integer
+  # Спір розглядався понад рік не з вини працівника
+  input rozhlyad_ponad_rik_ne_z_vyny content boolean
+  output misyaciv_do_vyplaty content integer
+  output suma content money
+
+scope SerednyZaCharVymushenohoProhulu:
+  definition misyaciv_do_vyplaty equals
+    if rozhlyad_ponad_rik_ne_z_vyny then
+      misyaciv_prohulu                       # за весь час прогулу
+    else
+      (if misyaciv_prohulu > 12 then 12 else misyaciv_prohulu)
+
+  definition suma equals
+    serednomisyachnyy_zarobitok * (decimal of misyaciv_do_vyplaty)
+```
+
+## Приклади-тести
+
+Перевірочні сценарії для регресійного тестування формул.
+
+```catala
+declaration scope Test117Stelya:
+  output rezultat content VidpovidalnistZaZatrymku
+
+scope Test117Stelya:
+  definition rezultat equals
+    output of VidpovidalnistZaZatrymku with {
+      -- ye_spir_pro_rozmir: false
+      -- vyna_robotodavcya: true
+      -- spir_na_koryst_pracivnyka: false
+      -- serednomisyachnyy_zarobitok: $20,000.00
+      -- misyaciv_zatrymky: 9    # обмежується до 6
+    }
+  assertion rezultat.suma_vidshkoduvannya = $120,000.00
+  assertion rezultat.misyaciv_do_vyplaty = 6
+
+declaration scope Test44Mobing:
+  output rezultat content VyhidnaDopomoga
+
+scope Test44Mobing:
+  definition rezultat equals
+    output of VyhidnaDopomoga with {
+      -- pidstava: PorushennyaRobotodavcem
+      -- serednomisyachnyy_zarobitok: $15,000.00
+      -- minimalna_zarplata: $8,000.00
+      -- rozmir_za_koldogovorom: $40,000.00   # > 3 середніх (45000)? ні
+    }
+  # 3 * 15000 = 45000 > 40000 → береться більше: 45000
+  assertion rezultat.suma_dopomohy = $45,000.00
+
+declaration scope Test233Zvilnennya:
+  output rezultat content StrokZvernennya
+
+scope Test233Zvilnennya:
+  definition rezultat equals
+    output of StrokZvernennya with {
+      -- typ_sporu: ProZvilnennya
+      -- data_pochatku: |2026-01-15|
+      -- data_zvernennya: |2026-02-10|   # у межах 1 місяця
+    }
+  assertion rezultat.strok_dotrymano = true
+  assertion rezultat.strok_misyaciv = 1
+
+declaration scope Test233Zarplata:
+  output rezultat content StrokZvernennya
+
+scope Test233Zarplata:
+  definition rezultat equals
+    output of StrokZvernennya with {
+      -- typ_sporu: ProStyahnennyaZarplaty
+      -- data_pochatku: |2020-01-01|
+      -- data_zvernennya: |2026-01-01|   # роки потому — строку немає
+    }
+  assertion rezultat.ye_strok = false
+  assertion rezultat.strok_dotrymano = true
+```
